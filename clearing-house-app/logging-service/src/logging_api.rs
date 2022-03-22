@@ -23,11 +23,11 @@ use std::convert::TryFrom;
 
 use crate::model::{ids::{
     message::IdsMessage,
+    IdsQueryResult,
     request::ClearingHouseMessage,
 }, OwnerList, DataTransaction};
 use crate::db::ProcessStore;
 use crate::model::constants::{ROCKET_CLEARING_HOUSE_BASE_API, ROCKET_LOG_API, ROCKET_QUERY_API, ROCKET_PROCESS_API, ROCKET_PK_API};
-
 
 #[post( "/<pid>", format = "json", data = "<message>")]
 async fn log(
@@ -209,7 +209,7 @@ async fn log_message(
             doc.tc = tid;
             return match doc_api.create_document(&apikey.raw, &doc){
                 Ok(doc_receipt) => {
-                    debug!("Increase transabtion counter");
+                    debug!("Increase transaction counter");
                     match db.increment_transaction_counter().await{
                         Ok(Some(_tid)) => {
                             debug!("Creating receipt...");
@@ -256,13 +256,15 @@ async fn unauth_id(_pid: Option<String>, _id: Option<String>) -> ApiResponse {
     ApiResponse::Unauthorized(String::from("Token not valid!"))
 }
 
-#[post("/<pid>?<page>&<size>&<sort>", format = "json", data = "<message>")]
+#[post("/<pid>?<page>&<size>&<sort>&<date_to>&<date_from>", format = "json", data = "<message>")]
 async fn query_pid(
     apikey: ApiKey<IdsClaims, Empty>,
     db: &State<ProcessStore>,
     page: Option<i32>,
     size: Option<i32>,
     sort: Option<SortingOrder>,
+    date_to: Option<String>,
+    date_from: Option<String>,
     doc_api: &State<DocumentApiClient>,
     pid: String,
     message: Json<ClearingHouseMessage>
@@ -340,7 +342,7 @@ async fn query_pid(
         None => Ascending
     };
 
-    match doc_api.get_documents_for_pid_paginated(&apikey.raw, &pid, sanitized_page, sanitized_size, sanitized_sort) {
+    match doc_api.get_documents_for_pid_paginated(&apikey.raw, &pid, sanitized_page, sanitized_size, sanitized_sort, date_from, date_to) {
         Ok(docs) => {
             let messages: Vec<IdsMessage> = docs.iter().map(|d| IdsMessage::from(d.clone())).collect();
             ApiResponse::SuccessOk(json!(messages))

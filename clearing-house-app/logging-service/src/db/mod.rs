@@ -165,7 +165,6 @@ impl ProcessStore {
         let coll = self.database.collection::<Process>(MONGO_COLL_PROCESSES);
         match coll.find_one(Some(doc!{ MONGO_ID: pid }), None).await{
             Ok(process) => {
-                debug!("... found it.");
                 Ok(process)
             },
             Err(e) => {
