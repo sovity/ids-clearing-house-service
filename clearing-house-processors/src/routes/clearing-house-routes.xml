@@ -7,6 +7,34 @@
           http://camel.apache.org/schema/spring
           https://camel.apache.org/schema/spring/camel-spring-3.16.0.xsd">
 
+    <bean id="jasypt" class="org.apache.camel.component.jasypt.JasyptPropertiesParser">
+        <property name="password" value="password"/>
+    </bean>
+
+    <bean class="org.apache.camel.spring.spi.BridgePropertyPlaceholderConfigurer" id="bridgePropertyPlaceholder">
+        <property name="location" value="file:/root/etc/ch.properties"/>
+        <property name="parser" ref="jasypt"/>
+    </bean>
+
+    <bean class="org.apache.camel.support.jsse.SSLContextParameters" id="ChSslContext">
+        <property name="keyManagers">
+            <bean class="org.apache.camel.support.jsse.KeyManagersParameters">
+                <property name="keyStore">
+                    <camel:keyStoreParameters password="${truststore.pw}"
+                                              resource="${ch.keyStoreResource}"/>
+                </property>
+                <property name="keyPassword" value="${ch.keyStorePassword}"/>
+            </bean>
+        </property>
+        <property name="trustManagers" ref="routeTrustManagers"/>
+    </bean>
+
+    <bean class="org.apache.camel.support.jsse.TrustManagersParameters" id="routeTrustManagers">
+        <property name="keyStore">
+            <camel:keyStoreParameters password="${ch.trustStorePassword}" resource="${ch.trustStoreResource}"/>
+        </property>
+    </bean>
+
     <camel:sslContextParameters id="ChSslContext">
         <camel:keyManagers keyPassword="password">
             <camel:keyStore resource="etc/keystore.p12" password="password"/>
@@ -28,7 +56,7 @@
 
     <!-- Routes -->
     <camelContext xmlns="http://camel.apache.org/schema/spring">
-        <restConfiguration scheme="https" component="jetty" host="0.0.0.0" port="9999" bindingMode="off">
+        <restConfiguration scheme="https" component="jetty" host="0.0.0.0" port="{{ch.multipart.port}}" bindingMode="off">
             <endpointProperty key="sslContextParameters" value="#ChSslContext"/>
         </restConfiguration>
 
@@ -82,7 +110,7 @@
             <process ref="MultipartOutputProcessor" />
         </route>
         <route id="CH_IDSCP2_ROUTE">
-            <from uri="idscp2server://0.0.0.0:29292?sslContextParameters=#ChSslContext&amp;useIdsMessages=true&amp;copyHeadersRegex=%28ch-ids-%5Ba-z%5D%2A%7CContent-Type%29"/>
+            <from uri="idscp2server://0.0.0.0:${ch.idscp2.port}?sslContextParameters=#ChSslContext&amp;useIdsMessages=true&amp;copyHeadersRegex=%28ch-ids-%5Ba-z%5D%2A%7CContent-Type%29"/>
             <onException>
                 <exception>java.io.IOException</exception>
                 <exception>java.lang.SecurityException</exception>
