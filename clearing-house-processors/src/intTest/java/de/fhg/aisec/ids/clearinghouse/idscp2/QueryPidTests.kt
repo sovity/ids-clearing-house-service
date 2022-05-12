@@ -1,11 +1,14 @@
 package de.fhg.aisec.ids.clearinghouse.idscp2
 
+import de.fhg.aisec.ids.clearinghouse.QueryResult
 import de.fhg.aisec.ids.clearinghouse.Utility
 import de.fhg.aisec.ids.clearinghouse.Utility.Companion.STATUS_403
 import de.fhg.aisec.ids.clearinghouse.Utility.Companion.STATUS_404
 import de.fhg.aisec.ids.clearinghouse.Utility.Companion.formatId
+import de.fhg.aisec.ids.clearinghouse.Utility.Companion.parseQueryResult
 import de.fhg.aisec.ids.clearinghouse.idscp2.CreatePidTests.Companion.succCreatePid
 import de.fhg.aisec.ids.clearinghouse.idscp2.QueryIdTests.Companion.failQueryId
+import de.fhg.aisec.ids.clearinghouse.multipart.QueryPidTests
 import de.fraunhofer.iais.eis.ResultMessage
 import org.junit.Assert
 import org.junit.jupiter.api.Test
@@ -19,8 +22,8 @@ class QueryPidTests {
         succCreatePid(pid, null)
 
         // Test: query existing Pid with no documents
-        val result = succQueryPid(pid)
-        Assert.assertEquals("Should receive empty JSON array!", "[]", result)
+        val result = QueryPidTests.succQueryPid(pid)
+        Assert.assertEquals("Should receive empty array!", 0, result.documents.size)
     }
 
     @Test
@@ -34,9 +37,8 @@ class QueryPidTests {
         }
 
         // Test: query existing Pid with three documents
-        val docs = succQueryPid(pid)
-        println("body: $docs")
-        //TODO: test that we have 3 items in the json
+        val result = QueryPidTests.succQueryPid(pid)
+        Assert.assertEquals("Should receive empty array!", 3, result.documents.size)
     }
 
     @Test
@@ -47,13 +49,15 @@ class QueryPidTests {
         // create Pid with other user, but user 1 is also authorized
         succCreatePid(pid, owners, client = 2)
 
-        // add message
-        LogMessageTests.succLogMessage(pid, "This message is logged", c = 2)
+        // add three messages
+        val messages = listOf("This is the first message", "This is the second message", "This is the third message")
+        messages.forEach{
+            LogMessageTests.succLogMessage(pid, it, c = 2)
+        }
 
         // Test: query existing Pid with user (who did not create pid, but is authorized)
-        val docs = succQueryPid(pid)
-        println("body: $docs")
-        //TODO: test that we have 3 items in the json
+        val result = QueryPidTests.succQueryPid(pid)
+        Assert.assertEquals("Should receive empty array!", 3, result.documents.size)
     }
 
     @Test
@@ -81,13 +85,12 @@ class QueryPidTests {
             return failQueryId(pid, null, em)
         }
 
-        fun succQueryPid(pid: String): String {
+        fun succQueryPid(pid: String): QueryResult {
             val (resultMessage, resultPayload, resultHeaders) = Idscp2EndpointTest.queryMessage(pid, null, "")
             // check IDS message type
             Assert.assertTrue(resultMessage is ResultMessage)
             // check the pid from receipt in the payload. Does pid match with the given pid?
-            val p = String(resultPayload!!)
-            return p
+            return parseQueryResult(String(resultPayload!!))
         }
     }
 

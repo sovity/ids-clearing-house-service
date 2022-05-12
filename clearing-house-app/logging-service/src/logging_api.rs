@@ -53,7 +53,7 @@ async fn log(
 
     // get credentials for user [this should not happen, the connector should make sure of it]
     let user;
-    match getConnectorIdentifier(&apikey){
+    match get_connector_identifier(&apikey){
         None => {
             // cannot authenticate user without credentials
             return ApiResponse::Unauthorized(String::from("Invalid user!"));
@@ -123,7 +123,7 @@ async fn create_process(
 
     // get credentials for user [this should not happen, the connector should make sure of it]
     let user;
-    match getConnectorIdentifier(&apikey){
+    match get_connector_identifier(&apikey){
         None => {
             // cannot authenticate user without credentials
             return ApiResponse::Unauthorized(String::from("Invalid user!"))
@@ -155,7 +155,7 @@ async fn create_process(
     match db.get_process(&pid).await{
         Ok(Some(p)) => {
             warn!("Requested pid '{}' already exists.", &p.id);
-            if !p.owners.contains(user) {
+            if !p.owners.contains(&user) {
                 ApiResponse::Forbidden(String::from("User not authorized!"))
             }
             else {
@@ -273,7 +273,7 @@ async fn query_pid(
 
     // get credentials for user [this should not happen, the connector should make sure of it]
     let user;
-    match getConnectorIdentifier(&apikey){
+    match get_connector_identifier(&apikey){
         None => {
             // cannot authenticate user without credentials
             return ApiResponse::Unauthorized(String::from("Invalid user!"))
@@ -285,7 +285,7 @@ async fn query_pid(
     match db.exists_process(&pid).await {
         Ok(true) => info!("User authorized."),
         Ok(false) => return ApiResponse::NotFound(String::from("Process does not exist!")),
-        Err(e) => {
+        Err(_e) => {
             error!("Error while checking process '{}' for user '{}'", &pid, &user);
             return ApiResponse::InternalError(String::from("Cannot authorize user!"))
         }
@@ -342,10 +342,12 @@ async fn query_pid(
         None => Ascending
     };
 
-    match doc_api.get_documents_for_pid_paginated(&apikey.raw, &pid, sanitized_page, sanitized_size, sanitized_sort, date_from, date_to) {
-        Ok(docs) => {
-            let messages: Vec<IdsMessage> = docs.iter().map(|d| IdsMessage::from(d.clone())).collect();
-            ApiResponse::SuccessOk(json!(messages))
+    match doc_api.get_documents(&apikey.raw, &pid, sanitized_page, sanitized_size, sanitized_sort, date_from, date_to) {
+        Ok(r) => {
+            let messages: Vec<IdsMessage> = r.documents.iter().map(|d| IdsMessage::from(d.clone())).collect();
+            let result = IdsQueryResult::new(r.date_from, r.date_to, r.page, r.max_page, r.size, r.order, messages);
+            ApiResponse::SuccessOk(json!(result))
+
         },
         Err(e) => {
             error!("Error while retrieving message: {:?}", e);
@@ -359,7 +361,7 @@ async fn query_id(apikey: ApiKey<IdsClaims, Empty>, db: &State<ProcessStore>, do
 
     // get credentials for user [this should not happen, the connector should make sure of it]
     let user;
-    match getConnectorIdentifier(&apikey){
+    match get_connector_identifier(&apikey){
         None => {
             // cannot authenticate user without credentials
             return ApiResponse::Unauthorized(String::from("Invalid user!"))
@@ -371,7 +373,7 @@ async fn query_id(apikey: ApiKey<IdsClaims, Empty>, db: &State<ProcessStore>, do
     match db.exists_process(&pid).await {
         Ok(true) => info!("User authorized."),
         Ok(false) => return ApiResponse::NotFound(String::from("Process does not exist!")),
-        Err(e) => {
+        Err(_e) => {
             error!("Error while checking process '{}' for user '{}'", &pid, &user);
             return ApiResponse::InternalError(String::from("Cannot authorize user!"))
         }
@@ -428,7 +430,7 @@ pub fn mount_api() -> AdHoc {
     })
 }
 
-fn getConnectorIdentifier(apikey: &ApiKey<IdsClaims, Empty>) -> Option<String> {
+fn get_connector_identifier(apikey: &ApiKey<IdsClaims, Empty>) -> Option<String> {
     match apikey.sub() {
         Some(subject) => Some(subject),
         None => {
