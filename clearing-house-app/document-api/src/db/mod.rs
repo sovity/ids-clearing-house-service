@@ -6,6 +6,7 @@ use rocket::fairing::{self, Fairing, Info, Kind};
 use rocket::futures::TryStreamExt;
 use rocket::serde::json::json;
 use std::convert::TryFrom;
+use chrono::NaiveDateTime;
 
 use core_lib::constants::{DATABASE_URL, DOCUMENT_DB, CLEAR_DB, MONGO_COLL_DOCUMENTS, MONGO_DT_ID, MONGO_ID, MONGO_PID, DOCUMENT_DB_CLIENT, MONGO_TC, MONGO_TS};
 use core_lib::db::{DataStoreApi, init_database_client};
@@ -219,6 +220,29 @@ impl DataStore {
         Ok(result)
     }
 
+    /// gets a page of documents for a single process from the db defined by parameters page, size and sort
+    pub async fn get_paginated_documents_for_pid_during(&self, pid: &String, page: u64, size: u64, sort: &SortingOrder, date_from: &NaiveDateTime, date_to: &NaiveDateTime) -> Result<Vec<EncryptedDocument>> {
+        debug!("...trying to get page {} of size {} of documents for pid {}...", pid, page, size);
+        let mut options = FindOptions::default();
+        options.skip = Some((page - 1) * size);
+        options.limit = Some(i64::try_from(size)?);
+        options.sort = match sort{
+            SortingOrder::Ascending => {
+                Some(doc!{MONGO_TS: 1})
+            },
+            SortingOrder::Descending => {
+                Some(doc!{MONGO_TS: -1})
+            }
+        };
+        options.allow_disk_use = Some(true);
+
+        let coll = self.database.collection::<EncryptedDocument>(MONGO_COLL_DOCUMENTS);
+        let result = coll.find(Some(doc! { MONGO_PID: pid.clone(), MONGO_TS: {"$gte": date_from.timestamp(), "$lte": date_to.timestamp()} }), options).await?
+            .try_collect().await.unwrap_or_else(|_| vec![]);
+        debug!("found {:#?}", &result);
+        Ok(result)
+    }
+
 
     /// gets documents for a single process from the db
     pub async fn get_document_with_previous_tc(&self, tc: i64) -> Result<Option<EncryptedDocument>> {
@@ -281,6 +305,16 @@ impl DataStore {
         Ok(result)
     }
 
+    /// counts documents of a specific document type for a single process from the db during a specific time interval
+    pub async fn count_documents_for_pid_during(&self, pid: &String, date_from: &NaiveDateTime, date_to: &NaiveDateTime) -> Result<u64> {
+        debug!("...counting all documents for pid {}...", pid);
+        debug!("Entry with Date greater than {:#?} (timestamp {}) and less than {:#?} (timestamp{}) ...", &date_from, date_from.timestamp(), &date_to, date_to.timestamp());
+        let coll = self.database.collection::<EncryptedDocument>(MONGO_COLL_DOCUMENTS);
+        let result = coll.count_documents(Some(doc! { MONGO_PID: pid.clone(), MONGO_TS: {"$gte": date_from.timestamp(), "$lte": date_to.timestamp()} }), None).await?;
+        debug!("Found total {} in interval", result);
+        Ok(result)
+    }
+
     /// counts documents of a specific document type for a single process from the db
     pub async fn count_documents_of_dt_for_pid(&self, dt_id: &String, pid: &String) -> Result<u64> {
         debug!("Trying to get all documents for pid {} of dt {}...", pid, dt_id);
@@ -288,6 +322,17 @@ impl DataStore {
         let result = coll.count_documents(Some(doc! { MONGO_PID: pid.clone(), MONGO_DT_ID: dt_id.clone() }), None).await?;
         Ok(result)
     }
+
+    /// counts documents of a specific document type for a single process from the db during a specific time interval
+    pub async fn count_documents_of_dt_for_pid_during(&self, dt_id: &String, pid: &String, date_from: &NaiveDateTime, date_to: &NaiveDateTime) -> Result<u64> {
+        debug!("Trying to get all documents for pid {} of dt {}...", pid, dt_id);
+        debug!("Entry with Date greater than {:#?} (timestamp {}) ...", &date_from, date_from.timestamp());
+        let coll = self.database.collection::<EncryptedDocument>(MONGO_COLL_DOCUMENTS);
+        let result = coll.count_documents(Some(doc! { MONGO_PID: pid.clone(), MONGO_DT_ID: dt_id.clone(), MONGO_TS: {"$gte": date_from.timestamp(), "$lte": date_to.timestamp()} }), None).await?;
+        debug!("Found total {} in interval", result);
+        Ok(result)
+    }
+
 
     /// gets all documents from the db
     pub async fn get_all_documents(&self) -> Result<Vec<EncryptedDocument>> {

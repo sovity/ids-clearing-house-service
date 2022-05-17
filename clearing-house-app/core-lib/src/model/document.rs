@@ -8,7 +8,7 @@ use crate::errors::*;
 use crate::constants::{SPLIT_CT, SPLIT_QUOTE, SPLIT_SIGN};
 use crate::model::new_uuid;
 use crate::model::crypto::{KeyEntry, KeyMap};
-use chrono::Utc;
+use chrono::Local;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct DocumentPart {
@@ -154,7 +154,7 @@ impl Document{
             id: Document::create_uuid(),
             dt_id,
             pid,
-            ts: Utc::now().timestamp(),
+            ts: Local::now().timestamp(),
             tc,
             parts,
         }
